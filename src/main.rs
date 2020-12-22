@@ -1,15 +1,23 @@
+#![feature(hash_set_entry)]
+
 use serde_derive::Deserialize;
 use std::collections::HashSet;
+use std::rc::Rc;
 
 #[derive(Deserialize)]
-struct Post {
+struct RawPost {
     title: String,
     tags: HashSet<String>,
 }
 
+struct Post {
+    title: String,
+    tags: HashSet<Rc<String>>,
+}
+
 fn main() -> Result<(), std::io::Error> {
     // Collect all tags
-    let mut all_tags: HashSet<String> = HashSet::new();
+    let mut all_tags: HashSet<Rc<String>> = HashSet::new();
     // colect all posts
     let mut posts: Vec<Post> = Vec::new();
 
@@ -21,11 +29,18 @@ fn main() -> Result<(), std::io::Error> {
         // Read file contents as String
         let contents = std::fs::read_to_string(entry.path())?;
         // Parse contents with `toml` crate
-        let post: Post = toml::from_str(&contents)?;
+        let raw_post: RawPost = toml::from_str(&contents)?;
+        let mut post_tags: HashSet<Rc<String>> = HashSet::new();
         // Add all tags to all_tags set
-        for tag in &post.tags {
-            all_tags.insert(tag.clone());
+        for tag in raw_post.tags {
+            let tag = Rc::new(tag);
+            let tag = all_tags.get_or_insert(tag);
+            post_tags.insert(tag.clone());
         }
+        let post = Post {
+            title: raw_post.title,
+            tags: post_tags,
+        };
         // Update posts vector
         posts.push(post);
     }
@@ -34,7 +49,7 @@ fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn gen_csv(all_tags: &HashSet<String>, posts: &[Post]) -> Result<(), std::io::Error> {
+fn gen_csv(all_tags: &HashSet<Rc<String>>, posts: &[Post]) -> Result<(), std::io::Error> {
     // Open file for output
     let mut writer = csv::Writer::from_path("tag-matrix.csv")?;
 
